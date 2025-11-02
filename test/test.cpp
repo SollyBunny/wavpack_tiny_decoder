@@ -134,13 +134,10 @@ bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char 
 		Sample.m_LoopStart = -1;
 		Sample.m_LoopEnd = -1;
 		Sample.m_PausedAt = 0;
-
-		BufferData.m_pData = nullptr;
 	}
 	else
 	{
 		log_error("sound/wv", "Failed to decode sample (%s). Filename='%s'", aError, pContextName);
-		BufferData.m_pData = nullptr;
 		return false;
 	}
 
