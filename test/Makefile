@@ -16,5 +16,8 @@ clean:
 unusedsymbols: all
 	objdump -t test | grep "F "
 
-run: all
+test_most: all
 	./test music_menu.wv && mpv out.wav
+
+test_loop: all
+	./test sfx_falling_woosh.wv && mpv out.wav

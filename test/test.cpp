@@ -12,6 +12,18 @@
 
 #define mem_copy memcpy
 
+bool str_toint(const char *str, int *out)
+{
+	// returns true if conversion was successful
+	char *end;
+	int value = strtol(str, &end, 10);
+	if(*end != '\0')
+		return false;
+	if(out != nullptr)
+		*out = value;
+	return true;
+}
+
 struct CSample
 {
 	int m_Index;
@@ -36,15 +48,16 @@ struct CSample
 	}
 };
 
-bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char *pContextName)
+static bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char *pContextName)
 {
 	char aError[100];
 
 	struct {
+		const char *m_pContextName;
 		const void *m_pData;
 		uint32_t m_Position;
 		uint32_t m_Length;
-	} BufferData = {pData, 0, DataSize};
+	} BufferData = {pContextName, pData, 0, DataSize};
 
 	WavpackStreamReader Callback = {
 		.read_bytes = [](void *pId, void *pBuffer, int32_t Size) {
@@ -68,6 +81,7 @@ bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char 
 				return CallbackData1.m_Position += Offset;
 			if(Whence == SEEK_END)
 				return CallbackData1.m_Position = CallbackData1.m_Length - Offset;
+			log_error("sound/wv", "Wavpack tried to seek with an unknown type. Offset=%d, Whence=%d, Filename='%s'", Offset, Whence, CallbackData1.m_pContextName);
 			return -1;
 		},
 		.push_back_byte = [](void *pId, int Char) {
@@ -85,7 +99,7 @@ bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char 
 			return 0;
 		},
 	};
-	WavpackContext *pContext = WavpackOpenFileInputEx(&Callback, (void *)&BufferData, 0, aError, 0, 0);
+	WavpackContext *pContext = WavpackOpenFileInputEx(&Callback, (void *)&BufferData, 0, aError, OPEN_TAGS, 0);
 	if(pContext)
 	{
 		const int NumSamples = WavpackGetNumSamples(pContext);
@@ -124,16 +138,37 @@ bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char 
 			*pDst++ = (short)*pSrc++;
 
 		free(pBuffer);
-#ifdef CONF_WAVPACK_CLOSE_FILE
 		WavpackCloseFile(pContext);
-#endif
 
 		Sample.m_NumFrames = NumSamples;
 		Sample.m_Rate = SampleRate;
 		Sample.m_Channels = NumChannels;
-		Sample.m_LoopStart = -1;
-		Sample.m_LoopEnd = -1;
 		Sample.m_PausedAt = 0;
+
+		char aBuf[128];
+		auto ParseLoopTag = [&](const char *pTag) {
+			if(WavpackGetTagItem(pContext, pTag, aBuf, sizeof(aBuf)) <= 0)
+				return -1;
+			int Value;
+			if(!str_toint(aBuf, &Value)) {
+				log_error("sound/wv", "Failed to parse %s tag. Value='%s', Filename='%s'", pTag, aBuf, pContextName);
+				return -1;
+			}
+			if(Value < 0 || Value >= Sample.m_NumFrames)
+			{
+				log_error("sound/wv", "Tag %s is out of bounds. Value=%d, Min=0, Max=%d, Filename='%s'", pTag, Sample.m_LoopStart, Sample.m_NumFrames - 1, pContextName);
+				return -1;
+			}
+			return Value;
+		};
+		Sample.m_LoopStart = ParseLoopTag("loop_start");
+		Sample.m_LoopEnd = ParseLoopTag("loop_end");
+		if(Sample.m_LoopStart < 0 && Sample.m_LoopEnd >= 0)
+			Sample.m_LoopStart = 0;
+		if(Sample.m_LoopEnd >= 0 && Sample.m_LoopStart >= Sample.m_LoopEnd) {
+			log_error("sound/wv", "Invalid loop range. LoopStart=%d, LoopEnd=%d, Filename='%s'", Sample.m_LoopStart, Sample.m_LoopEnd, pContextName);
+			Sample.m_LoopStart = Sample.m_LoopEnd = -1;
+		}
 	}
 	else
 	{
@@ -146,46 +181,63 @@ bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, const char 
 
 int main(int argc, char **argv) {
 	// Args
-	if (argc != 2) {
-		printf("usage: %s [music.wav]", argv[0]);
+	if(argc != 2)
+	{
+		std::printf("usage: %s [music.wav]", argv[0]);
 		return 0;
 	}
 
 	// Read file
 	auto CheckErrno = [](const char *pWhat) {
-		if (errno != 0) {
-			perror(pWhat);
-			exit(1);
+		if(errno != 0)
+		{
+			std::perror(pWhat);
+			std::exit(1);
 		}
 	};
 
-	auto File = fopen(argv[1], "rb");
+	auto File = std::fopen(argv[1], "rb");
 	CheckErrno("fopen %1");
-	fseek(File, 0, SEEK_END);
+	std::fseek(File, 0, SEEK_END);
 	CheckErrno("fseek SEEK_END");
-	auto Size = ftell(File);
+	auto Size = std::ftell(File);
 	CheckErrno("ftell %1");
-	fseek(File, 0, SEEK_SET);
+	std::fseek(File, 0, SEEK_SET);
 	CheckErrno("fseek SEEK_SET");
-	auto Data = malloc(Size);
-	fread(Data, 1, Size, File);
+	auto Data = std::malloc(Size);
+	std::fread(Data, 1, Size, File);
 	CheckErrno("fread %1");
-	fclose(File);
+	std::fclose(File);
 
-	printf("Read %s (%d bytes)\n", argv[1], (int)Size);
+	std::printf("Read %s (%d bytes)\n", argv[1], (int)Size);
 
 	// Parse
 	CSample Sample;
-	if (!DecodeWV(Sample, Data, Size, "test")) {
-		printf("Decode failed\n");
+	if(!DecodeWV(Sample, Data, Size, "test"))
+	{
+		std::printf("Decode failed\n");
 		return 1;
 	}
-	printf("Decoded %d frames at %dhz (%f seconds)\n", Sample.m_NumFrames, Sample.m_Rate, (float)Sample.m_NumFrames / (float)Sample.m_Rate);
+	std::printf("Decoded %d frames at %dhz (%f seconds)\n", Sample.m_NumFrames, Sample.m_Rate, (float)Sample.m_NumFrames / (float)Sample.m_Rate);
+	std::printf("Loop pts: %d %d\n", Sample.m_LoopStart, Sample.m_LoopEnd);
 
-	free(Data);
+	std::free(Data);
 
-	File = fopen("out.wav", "wb");
+	File = std::fopen("out.wav", "wb");
 	CheckErrno("fopen out.wav");
+
+	// Do looping
+	if(Sample.m_LoopStart >= 0)
+	{
+		int LoopLen = Sample.m_LoopEnd - Sample.m_LoopStart;
+		int LoopCount = 5;
+		short *pNewData = (short *)malloc(sizeof(short) * (Sample.m_NumFrames + LoopLen * LoopCount));
+		memcpy(pNewData, Sample.m_pData, sizeof(short) * Sample.m_NumFrames);
+		for(int i = 0; i < LoopCount; i++)
+			memcpy(pNewData + Sample.m_NumFrames + i * LoopLen, Sample.m_pData + Sample.m_LoopStart, sizeof(short) * LoopLen);
+		Sample.m_pData = pNewData;
+		Sample.m_NumFrames += LoopLen * LoopCount;
+	}
 
 	// WAV header fields
 	uint32_t data_size = Sample.m_NumFrames * Sample.m_Channels * sizeof(short);
