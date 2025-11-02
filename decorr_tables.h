@@ -35,6 +35,8 @@
 // Since this include file contains that actual tables as static const data,
 // it should only be included from ONE source file (currently pack.c)!
 
+#include "wavpack_local.h"
+
 static const WavpackDecorrSpec fast_specs [] = {
         { 1, 2, {18,17} },  // 0
         { 1, 1, {17,17} },  // 1
