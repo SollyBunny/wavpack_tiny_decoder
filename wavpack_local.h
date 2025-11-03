@@ -647,8 +647,6 @@ static __inline int count_bits (uint32_t av) { unsigned long res; return _BitSca
 #endif
 
 void init_words (WavpackStream *wps);
-void write_entropy_vars (WavpackStream *wps, WavpackMetadata *wpmd);
-void write_hybrid_profile (WavpackStream *wps, WavpackMetadata *wpmd);
 int read_entropy_vars (WavpackStream *wps, WavpackMetadata *wpmd);
 int read_hybrid_profile (WavpackStream *wps, WavpackMetadata *wpmd);
 int32_t FASTCALL send_word (WavpackStream *wps, int32_t value, int chan);
