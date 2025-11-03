@@ -34,7 +34,6 @@ struct CSample
 	int m_Rate;
 	int m_Channels;
 	int m_LoopStart;
-	int m_LoopEnd;
 	int m_PausedAt;
 
 	float TotalTime() const
@@ -76,13 +75,17 @@ static bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, cons
 		.set_pos_rel = [](void *pId, int32_t Offset, int Whence) -> int32_t {
 			auto& CallbackData1 = *(decltype(BufferData) *)pId;
 			if(Whence == SEEK_SET)
-				return CallbackData1.m_Position = Offset;
-			if(Whence == SEEK_CUR)
-				return CallbackData1.m_Position += Offset;
-			if(Whence == SEEK_END)
-				return CallbackData1.m_Position = CallbackData1.m_Length - Offset;
-			log_error("sound/wv", "Wavpack tried to seek with an unknown type. Offset=%d, Whence=%d, Filename='%s'", Offset, Whence, CallbackData1.m_pContextName);
-			return -1;
+				CallbackData1.m_Position = Offset;
+			else if(Whence == SEEK_CUR)
+				CallbackData1.m_Position += Offset;
+			else if(Whence == SEEK_END)
+				CallbackData1.m_Position = CallbackData1.m_Length + Offset;
+			else {
+				log_error("sound/wv", "Wavpack tried to seek with an unknown type. Offset=%d, Whence=%d, Filename='%s'", Offset, Whence, CallbackData1.m_pContextName);
+				return -1;
+			}
+			CallbackData1.m_Position = std::clamp<uint32_t>(CallbackData1.m_Position, 0, CallbackData1.m_Length);
+			return CallbackData1.m_Position;
 		},
 		.push_back_byte = [](void *pId, int Char) {
 			((decltype(BufferData) *)pId)->m_Position -= 1;
@@ -138,37 +141,28 @@ static bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, cons
 			*pDst++ = (short)*pSrc++;
 
 		free(pBuffer);
-		WavpackCloseFile(pContext);
 
 		Sample.m_NumFrames = NumSamples;
 		Sample.m_Rate = SampleRate;
 		Sample.m_Channels = NumChannels;
+		Sample.m_LoopStart = 0;
 		Sample.m_PausedAt = 0;
 
 		char aBuf[128];
-		auto ParseLoopTag = [&](const char *pTag) {
-			if(WavpackGetTagItem(pContext, pTag, aBuf, sizeof(aBuf)) <= 0)
-				return -1;
-			int Value;
-			if(!str_toint(aBuf, &Value)) {
-				log_error("sound/wv", "Failed to parse %s tag. Value='%s', Filename='%s'", pTag, aBuf, pContextName);
-				return -1;
+		if(WavpackGetTagItem(pContext, "loop_start", aBuf, sizeof(aBuf)) > 0)
+		{
+			if(!str_toint(aBuf, &Sample.m_LoopStart)) {
+				log_error("sound/wv", "Failed to parse loop_start tag. Value='%s', Filename='%s'", aBuf, pContextName);
+				Sample.m_LoopStart = -1;
 			}
-			if(Value < 0 || Value >= Sample.m_NumFrames)
+			else if(Sample.m_LoopStart < 1 || Sample.m_LoopStart >= Sample.m_NumFrames)
 			{
-				log_error("sound/wv", "Tag %s is out of bounds. Value=%d, Min=0, Max=%d, Filename='%s'", pTag, Sample.m_LoopStart, Sample.m_NumFrames - 1, pContextName);
-				return -1;
+				log_error("sound/wv", "Tag loop_start is out of bounds. Value=%d, Min=1, Max=%d, Filename='%s'", Sample.m_LoopStart, Sample.m_NumFrames - 1, pContextName);
+				Sample.m_LoopStart = -1;
 			}
-			return Value;
-		};
-		Sample.m_LoopStart = ParseLoopTag("loop_start");
-		Sample.m_LoopEnd = ParseLoopTag("loop_end");
-		if(Sample.m_LoopStart < 0 && Sample.m_LoopEnd >= 0)
-			Sample.m_LoopStart = 0;
-		if(Sample.m_LoopEnd >= 0 && Sample.m_LoopStart >= Sample.m_LoopEnd) {
-			log_error("sound/wv", "Invalid loop range. LoopStart=%d, LoopEnd=%d, Filename='%s'", Sample.m_LoopStart, Sample.m_LoopEnd, pContextName);
-			Sample.m_LoopStart = Sample.m_LoopEnd = -1;
 		}
+
+		WavpackCloseFile(pContext);
 	}
 	else
 	{
@@ -219,23 +213,27 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	std::printf("Decoded %d frames at %dhz (%f seconds)\n", Sample.m_NumFrames, Sample.m_Rate, (float)Sample.m_NumFrames / (float)Sample.m_Rate);
-	std::printf("Loop pts: %d %d\n", Sample.m_LoopStart, Sample.m_LoopEnd);
-
+	
 	std::free(Data);
-
+	
 	File = std::fopen("out.wav", "wb");
 	CheckErrno("fopen out.wav");
-
+	
 	// Do looping
 	if(Sample.m_LoopStart >= 0)
 	{
-		int LoopLen = Sample.m_LoopEnd - Sample.m_LoopStart;
-		int LoopCount = 5;
-		short *pNewData = (short *)malloc(sizeof(short) * (Sample.m_NumFrames + LoopLen * LoopCount));
-		memcpy(pNewData, Sample.m_pData, sizeof(short) * Sample.m_NumFrames);
+		std::printf("Loop pt: %d (%f)\n", Sample.m_LoopStart, (float)Sample.m_LoopStart / (float)Sample.m_Rate);
+		int LoopLen = Sample.m_NumFrames - Sample.m_LoopStart;
+		int LoopCount = 50;
+		Sample.m_pData = (short *)realloc(Sample.m_pData, (Sample.m_NumFrames + LoopLen * LoopCount) * sizeof(short) * Sample.m_Channels);
 		for(int i = 0; i < LoopCount; i++)
-			memcpy(pNewData + Sample.m_NumFrames + i * LoopLen, Sample.m_pData + Sample.m_LoopStart, sizeof(short) * LoopLen);
-		Sample.m_pData = pNewData;
+		{
+			std::memcpy(
+				Sample.m_pData + (Sample.m_NumFrames + i * LoopLen) * Sample.m_Channels,
+				Sample.m_pData + Sample.m_LoopStart * Sample.m_Channels,
+				LoopLen * Sample.m_Channels * sizeof(short)
+			);
+		}
 		Sample.m_NumFrames += LoopLen * LoopCount;
 	}
 
