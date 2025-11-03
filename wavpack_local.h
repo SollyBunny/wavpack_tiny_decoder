@@ -496,8 +496,6 @@ int scan_float_data (WavpackStream *wps, f32 *values, int32_t num_values);
 void send_float_data (WavpackStream *wps, f32 *values, int32_t num_values);
 void float_values (WavpackStream *wps, int32_t *values, int32_t num_values);
 void dynamic_noise_shaping (WavpackStream *wps, const int32_t *buffer, int shortening_allowed);
-void execute_stereo (WavpackStream *wps, int32_t *samples, int no_history, int do_samples);
-void execute_mono (WavpackStream *wps, int32_t *samples, int no_history, int do_samples);
 
 ////////////////////////// DSD related (including decimation) //////////////////////////
 // modules: pack_dsd.c unpack_dsd.c
