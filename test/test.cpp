@@ -96,9 +96,9 @@ static bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, cons
 			return ((decltype(BufferData) *)pId)->m_Length;
 		},
 		.can_seek = [](void *) { return (int)true; },
-		.write_bytes = [](void *pId, void *pData, int Length) {
+		.write_bytes = [](void *pId, void *pBuffer, int Length) {
 			((decltype(BufferData) *)pId)->m_Position += Length;
-			(void)pData; // no-op
+			(void)pBuffer; // no-op
 			return 0;
 		},
 	};
@@ -113,14 +113,12 @@ static bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, cons
 		if(NumChannels > 2)
 		{
 			log_error("sound/wv", "File is not mono or stereo. Filename='%s'", pContextName);
-			BufferData.m_pData = nullptr;
 			return false;
 		}
 
 		if(BitsPerSample != 16)
 		{
 			log_error("sound/wv", "Bits per sample is %d, not 16. Filename='%s'", BitsPerSample, pContextName);
-			BufferData.m_pData = nullptr;
 			return false;
 		}
 
@@ -129,7 +127,6 @@ static bool DecodeWV(CSample &Sample, const void *pData, unsigned DataSize, cons
 		{
 			free(pBuffer);
 			log_error("sound/wv", "WavpackUnpackSamples failed. NumSamples=%d NumChannels=%d Filename='%s'", NumSamples, NumChannels, pContextName);
-			BufferData.m_pData = nullptr;
 			return false;
 		}
 
