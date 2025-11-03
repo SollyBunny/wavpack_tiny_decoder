@@ -309,7 +309,6 @@ WavpackContext *WavpackOpenRawDecoder (
 
 WavpackContext *WavpackOpenFileInputEx64 (WavpackStreamReader64 *reader, void *wv_id, void *wvc_id, char *error, int flags, int norm_offset);
 WavpackContext *WavpackOpenFileInputEx (WavpackStreamReader *reader, void *wv_id, void *wvc_id, char *error, int flags, int norm_offset);
-WavpackContext *WavpackOpenFileInput (const char *infilename, char *error, int flags, int norm_offset);
 
 #define OPEN_WVC        0x1     // open/read "correction" file
 #define OPEN_TAGS       0x2     // read ID3v1 / APEv2 tags (seekable file)
