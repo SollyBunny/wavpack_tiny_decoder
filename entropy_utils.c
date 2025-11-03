@@ -17,7 +17,6 @@
 // and writing can link with a subset of the library.
 
 #include <stdlib.h>
-#include <string.h>
 
 #include "wavpack_local.h"
 

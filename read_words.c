@@ -24,7 +24,6 @@
 // very simple encoding that is over 99% efficient with this data and
 // results in about 1.22 bits per sample.
 
-#include <stdlib.h>
 #include <string.h>
 
 #if defined(_MSC_VER)
