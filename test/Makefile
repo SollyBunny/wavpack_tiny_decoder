@@ -15,7 +15,12 @@ clean:
 	rm -f ../*.o test
 
 unusedsymbols: all
-	objdump -t test | grep "F "
+	@nm test | awk '/ [Tt] / {print $$3}' | sort -u > .used_symbols.txt
+	@for o in ../*.o test.o; do \
+		nm $$o | awk '/ [Tt] / {print $$3}' | sort -u > .all_symbols.txt; \
+		comm -23 .all_symbols.txt .used_symbols.txt || true; \
+	done
+	@rm -f .used_symbols.txt .all_symbols.txt
 
 test_most: all
 	./test music_menu.wv && mpv out.wav
