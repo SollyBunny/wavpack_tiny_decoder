@@ -47,11 +47,6 @@ int WavpackSeekSample64 (WavpackContext *wpc, int64_t sample)
         (wpc->wvc_flag && !wpc->reader->can_seek (wpc->wvc_in)))
             return FALSE;
 
-#ifdef ENABLE_LEGACY
-    if (wpc->stream3)
-        return seek_sample3 (wpc, (uint32_t) sample);
-#endif
-
 #ifdef ENABLE_DSD
     if (wpc->decimation_context) {      // the decimation code needs some context to be sample accurate
         if (sample < 16) {

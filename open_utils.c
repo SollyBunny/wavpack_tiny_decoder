@@ -76,12 +76,8 @@ WavpackContext *WavpackOpenFileInputEx64 (WavpackStreamReader64 *reader, void *w
     wpc->reader->push_back_byte (wpc->wv_in, first_byte);
 
     if (first_byte == 'R') {
-#ifdef ENABLE_LEGACY
-        return open_file3 (wpc, error);
-#else
         if (error) strcpy (error, "this legacy WavPack file is deprecated, use version 4.80.0 to transcode");
         return WavpackCloseFile (wpc);
-#endif
     }
 
     wpc->streams = (WavpackStream **)(malloc ((wpc->num_streams = 1) * sizeof (wpc->streams [0])));
@@ -262,10 +258,6 @@ WavpackContext *WavpackOpenFileInputEx64 (WavpackStreamReader64 *reader, void *w
 int WavpackGetVersion (WavpackContext *wpc)
 {
     if (wpc) {
-#ifdef ENABLE_LEGACY
-        if (wpc->stream3)
-            return get_version3 (wpc);
-#endif
         return wpc->version_five ? 5 : 4;
     }
 

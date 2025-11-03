@@ -120,11 +120,6 @@ uint32_t WavpackUnpackSamples (WavpackContext *wpc, int32_t *buffer, uint32_t sa
     wpc->worker_errors = 0;
 #endif
 
-#ifdef ENABLE_LEGACY
-    if (wpc->stream3)
-        return unpack_samples3 (wpc, buffer, samples);
-#endif
-
     while (samples) {
         WavpackStream *wps = wpc->streams [0];
         int stream_index = 0;
